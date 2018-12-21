@@ -3,9 +3,17 @@ using System.Collections.Generic;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour {
 
+	//переменная для установки макс. скорости персонажа
+    public float maxSpeed = 10f; 
+    //переменная для определения направления персонажа вправо/влево
+    private bool isFacingRight = true;
+    //ссылка на компонент анимаций
+    private Animator anim;
+	
 	public int speed;
 	
 	int lives;
@@ -14,6 +22,8 @@ public class PlayerController : MonoBehaviour {
 	GameObject heart_3;
 	
 	GameObject pause;
+	GameObject dialog;
+	GameObject history;
 	
 	Vector3 platformsX;
 	GameObject platforms;
@@ -41,6 +51,7 @@ public class PlayerController : MonoBehaviour {
 	private float groundRadius = 50;
 	//ссылка на слой, представляющий землю
 	public LayerMask whatIsGround;
+	public LayerMask whatIsFinal;
 	
 	//Проверка стен
 	private bool isColldR = false;
@@ -49,19 +60,21 @@ public class PlayerController : MonoBehaviour {
 	public Transform wallCheckL;
 	private float wallRadius = 0.2f;
 	
+	//Проверка конца уровня (столкновение)
+	private bool isColldFinal = false;
+	
 	//Столкновение с ловушками
 	private bool isTrapped = false;
 	public Transform trapCheck;
-	private float trapRadius = 80;
+	private float trapRadius = 50;
 	public LayerMask whatIsTrap;
 	
 	int checkHitDelay;
 	
 	// Use this for initialization
 	void Start ()
-	{		
-		
-		sprite = GetComponentInChildren<SpriteRenderer>();
+	{			
+		anim = GetComponent<Animator>();
 		
 		heart_1 = GameObject.Find("Heart_1");
 		heart_2 = GameObject.Find("Heart_2");
@@ -69,6 +82,8 @@ public class PlayerController : MonoBehaviour {
 		
 		pause = GameObject.Find("Pause");
 		pause.SetActive(false);
+		
+		dialog = GameObject.Find("DialogPanel");
 		
 		panel = GameObject.Find("Background");
 		tempPosPanel = panel.transform.position;
@@ -87,19 +102,35 @@ public class PlayerController : MonoBehaviour {
 		checkHitDelay = 0;
 		
 		lives = 3;
+		anim.enabled = false;
 	}
 	
 	// Update is called once per frame
 	void Update ()
-	{	
-		
+	{		
 		Pause();
+		//используем Input.GetAxis для оси Х. метод возвращает значение оси в пределах от -1 до 1.
+        //при стандартных настройках проекта 
+        //-1 возвращается при нажатии на клавиатуре стрелки влево (или клавиши А),
+        //1 возвращается при нажатии на клавиатуре стрелки вправо (или клавиши D)
+        float move = Input.GetAxis("Horizontal");
+
+        //если нажали клавишу для перемещения вправо, а персонаж направлен влево
+        if(move > 0 && !isFacingRight)
+            //отражаем персонажа вправо
+            Flip();
+        //обратная ситуация. отражаем персонажа влево
+        else if (move < 0 && isFacingRight)
+            Flip();
 		
 		tempPos = transform.position;
 		
-		MoveRight();
-		MoveLeft();
-		Jump();
+		if (dialog.activeSelf == false && pause.activeSelf == false)
+		{
+			MoveRight();
+			MoveLeft();
+			Jump();
+		}
 		
 		if (transform.position.y < -300)
 		{
@@ -108,6 +139,18 @@ public class PlayerController : MonoBehaviour {
 		
 		Trapped();
 	}
+	
+	private void Flip()
+    {
+        //меняем направление движения персонажа
+        isFacingRight = !isFacingRight;
+        //получаем размеры персонажа
+        Vector3 theScale = transform.localScale;
+        //зеркально отражаем персонажа по оси Х
+        theScale.x *= -1;
+        //задаем новый размер персонажа, равный старому, но зеркально отраженный
+        transform.localScale = theScale;
+    }
 	
 	void HitDelay()
 	{
@@ -151,28 +194,32 @@ public class PlayerController : MonoBehaviour {
 	
 	void Pause()
 	{
-		if (Input.GetKeyDown(KeyCode.Escape))
+		if (Input.GetKeyDown(KeyCode.Escape) && dialog.activeSelf == false)
 		{
 			if (pause.activeSelf == false)
 			{
 				pause.SetActive(true);
+				anim.enabled = false;
 			}
 			else
 			{
 				pause.SetActive(false);
+				anim.enabled = true;
 			}
 		}
 	}
 	
 	void Jump()
 	{
-		if (Input.GetKeyDown(KeyCode.Space) && pause.activeSelf == false)
+		if (Input.GetKeyDown(KeyCode.Space))
 		{
 			//определяем, на земле ли персонаж
 			isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundRadius, whatIsGround); 
 			//если персонаж в прыжке - выход из метода, чтобы не выполнялись действия, связанные с бегом
 			if (!isGrounded)
+			{
 				return;
+			}
 			if (isGrounded)
 			{
 				rigidbody.AddForce(transform.up * jumpForce, ForceMode2D.Impulse);
@@ -182,8 +229,53 @@ public class PlayerController : MonoBehaviour {
 	
 	void MoveRight()
 	{
-		if (Input.GetKey (KeyCode.D) && pause.activeSelf == false)
+		if (Input.GetKey(KeyCode.D))
 		{
+			anim.enabled = true;
+			
+			isColldFinal = Physics2D.OverlapCircle(wallCheckR.position, wallRadius, whatIsFinal); 
+			if (isColldFinal)
+			{
+				if (SceneManager.GetActiveScene().name == "Level_Frog_1")
+				{
+					SceneManager.LoadScene("Level_Frog_2");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Frog_2")
+				{
+					SceneManager.LoadScene("Level_Frog_3");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Frog_3")
+				{
+					GlobalNames.ach[1] = 1;
+					GlobalNames.ach[2] = 1;
+					SceneManager.LoadScene("Level_Dog_1");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Dog_1")
+				{
+					SceneManager.LoadScene("Level_Dog_2");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Dog_2")
+				{
+					SceneManager.LoadScene("Level_Dog_3");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Dog_3")
+				{
+					GlobalNames.ach[3] = 1;
+					GlobalNames.ach[4] = 1;
+					SceneManager.LoadScene("Level_Cat_1");
+				}
+				if (SceneManager.GetActiveScene().name == "Level_Cat_1")
+				{
+					GlobalNames.ach[5] = 1;
+					SceneManager.LoadScene("Final_Boss");
+				}
+				if (SceneManager.GetActiveScene().name == "Final_Boss")
+				{
+					GlobalNames.ach[6] = 1;
+					SceneManager.LoadScene("Final_Epilog");
+				}
+			}
+			
 			isColldR = Physics2D.OverlapCircle(wallCheckR.position, wallRadius, whatIsGround); 
 			if (isColldR)
 				return;
@@ -209,15 +301,16 @@ public class PlayerController : MonoBehaviour {
 						tempPosPanel.x = 0;
 					}
 				}
-				sprite.flipX = false;
 			}
 		}
 	}
 	
 	void MoveLeft()
 	{
-		if (Input.GetKey (KeyCode.A) && pause.activeSelf == false)
+		if (Input.GetKey (KeyCode.A))
 		{
+			anim.enabled = true;
+			
 			isColldL = Physics2D.OverlapCircle(wallCheckL.position, wallRadius, whatIsGround); 
 			if (isColldL)
 				return;
@@ -243,9 +336,12 @@ public class PlayerController : MonoBehaviour {
 						tempPosPanel.x = 0;
 					}
 				}
-				sprite.flipX = true;
 			}
-			
 		}
+	}
+	
+	void Attack()
+	{
+		
 	}
 }
